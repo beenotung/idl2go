@@ -16,6 +16,11 @@ export function iolist_to_string(iolist: iolist, acc = ''): string {
     return acc;
 }
 
+export function iolist_push(target: iolist, src: string | Array<string | iolist>) {
+    target.push(src as any);
+    return target;
+}
+
 export async function writeToFile(iolist: iolist, idlFilename: string, moduleName: string) {
     const tsFilename = idlToTsFilename(idlFilename, moduleName);
     const dir = getDir(tsFilename);

@@ -1,7 +1,7 @@
 {
-  "name": "idl2ts",
-  "version": "0.3.1",
-  "description": "convert IDL to typescript",
+  "name": "idl2go",
+  "version": "0.0.0",
+  "description": "convert IDL to golang",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

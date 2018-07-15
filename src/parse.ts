@@ -8,6 +8,7 @@ import {transpileFile} from "./transpiler";
 import {getDir} from "./path";
 import {getLineNum} from "./string";
 import {compare} from "./comapre";
+import {Output} from "./go";
 
 export const ifndef = '#ifndef';
 export const endif = '#endif';
@@ -121,7 +122,7 @@ export interface TypeName {
 
 export interface Context {
     idlFilename: string
-    preRes: iolist
+    output: Output
 }
 
 export function parseTypeName(text: string, offset: number, res: iolist, ctx: Context, skipStopWord = false): [TypeName, number] {
@@ -155,7 +156,7 @@ export function parseTypeDef(text: string, offset: number, ctx: Context): [iolis
     const res = [];
     offset += typedef.length;
     res.push('export type');
-    offset = parseEmpty(text, offset, res);
+    offset = parseEmpty(text, offset, ctx);
     let typeName: TypeName;
     [typeName, offset] = parseTypeName(text, offset, res, ctx);
     res.push(' ', typeName.name, '=', typeName.type, ';');
@@ -180,7 +181,8 @@ export function parseBlockComment(text: string, offset: number): [iolist, number
     return [res, offset];
 }
 
-export function parseEmpty(text: string, offset: number, res: iolist): number {
+export function parseEmpty(text: string, offset: number, ctx: Context): number {
+    const res = [];
     for (; ;) {
         const start = offset;
         offset = parseSpace(text, offset);
@@ -202,21 +204,22 @@ export function parseEmpty(text: string, offset: number, res: iolist): number {
             break;
         }
     }
+    ctx.output.addRes(res);
     return offset;
 }
 
-export function parseStruct(text: string, offset: number, ctx: Context): [iolist, number] {
+export function parseStruct(text: string, offset: number, ctx: Context): number {
     const res = [];
     offset += struct.length;
     res.push('export interface');
-    offset = parseEmpty(text, offset, res);
+    offset = parseEmpty(text, offset, ctx);
     let name: string;
     [name, offset] = parseName(text, offset);
     registerStruct(name, ctx.idlFilename);
     res.push(' ', name, '{');
     offset = skipOne(text, offset, '{', res);
     for (; ;) {
-        offset = parseEmpty(text, offset, res);
+        offset = parseEmpty(text, offset, ctx);
         if (text[offset] === '}') {
             break;
         }
@@ -227,21 +230,22 @@ export function parseStruct(text: string, offset: number, ctx: Context): [iolist
     res.push('}');
     offset = skipOne(text, offset, '}', res);
     offset = skipOne(text, offset, ';', res);
-    return [res, offset];
+    ctx.output.addRes(res);
+    return offset;
 }
 
-export function parseException(text: string, offset: number, ctx: Context): [iolist, number] {
+export function parseException(text: string, offset: number, ctx: Context): number {
     const res = [];
     offset += exception.length;
     res.push('export class');
-    offset = parseEmpty(text, offset, res);
+    offset = parseEmpty(text, offset, ctx);
     let name: string;
     [name, offset] = parseName(text, offset);
     registerException(name, ctx.idlFilename);
     res.push(' ', name, ' extends Error{');
     offset = skipOne(text, offset, '{', res);
     for (; ;) {
-        offset = parseEmpty(text, offset, res);
+        offset = parseEmpty(text, offset, ctx);
         if (text[offset] === '}') {
             break;
         }
@@ -252,39 +256,41 @@ export function parseException(text: string, offset: number, ctx: Context): [iol
     res.push('}');
     offset = skipOne(text, offset, '}', res);
     offset = skipOne(text, offset, ';', res);
-    return [res, offset];
+    ctx.output.addRes(res);
+    return offset;
 }
 
-export async function parseIfNDef(text: string, offset: number, selfFilename: string): Promise<[iolist, number]> {
+export async function parseIfNDef(text: string, offset: number, selfFilename: string, ctx: Context): Promise<number> {
     const res = [];
     offset += ifndef.length;
     let name: string;
     offset = parseSpace(text, offset);
     [name, offset] = parseName(text, offset);
     const ignore = !isNDef(name);
-    offset = parseEmpty(text, offset, res);
+    offset = parseEmpty(text, offset, ctx);
     for (; ;) {
-        offset = parseEmpty(text, offset, res);
+        offset = parseEmpty(text, offset, ctx);
         if (text.startsWith(endif, offset)) {
             break;
         }
-        let sub: iolist;
-        [sub, offset] = await parse(text, offset, selfFilename);
+        let context: Context;
+        [context, offset] = await parse(text, offset, selfFilename);
         if (!ignore) {
-            res.push(sub);
+            ctx.output.merge(context.output);
         }
     }
     offset += endif.length;
-    return [res, offset];
+    ctx.output.addRes(res);
+    return offset;
 }
 
-export function parseDefine(text: string, offset: number): [iolist, number] {
+export function parseDefine(text: string, offset: number): number {
     offset += define.length;
     offset = parseSpace(text, offset);
     let name: string;
     [name, offset] = parseName(text, offset);
     registerDefine(name);
-    return [[], offset];
+    return offset;
 }
 
 export async function parseInclude(text: string, offset: number, selfFilename: string): Promise<[iolist, number]> {
@@ -313,19 +319,19 @@ export async function parseInclude(text: string, offset: number, selfFilename: s
     return [res, offset];
 }
 
-export function parseEnum(text: string, offset: number, ctx: Context): [iolist, number] {
+export function parseEnum(text: string, offset: number, ctx: Context): number {
     const res = [];
     res.push('export enum');
     offset += enum_.length;
     let name: string;
-    offset = parseEmpty(text, offset, res);
+    offset = parseEmpty(text, offset, ctx);
     [name, offset] = parseName(text, offset);
     registerEnum(name, ctx.idlFilename);
     res.push(' ', name, '{');
     offset = skipOne(text, offset, '{', res);
     let first = true;
     for (; ;) {
-        offset = parseEmpty(text, offset, res);
+        offset = parseEmpty(text, offset, ctx);
         if (text[offset] === '}') {
             break;
         }
@@ -334,7 +340,7 @@ export function parseEnum(text: string, offset: number, ctx: Context): [iolist, 
         } else {
             res.push(',');
             offset = skipOne(text, offset, ',', res);
-            offset = parseEmpty(text, offset, res);
+            offset = parseEmpty(text, offset, ctx);
         }
         [name, offset] = parseName(text, offset);
         res.push(name);
@@ -342,7 +348,8 @@ export function parseEnum(text: string, offset: number, ctx: Context): [iolist, 
     res.push('}');
     offset = skipOne(text, offset, '}', res);
     offset = skipOne(text, offset, ';', res);
-    return [res, offset];
+    ctx.output.addRes(res);
+    return offset;
 }
 
 // TODO design Box for out and inout
@@ -480,15 +487,13 @@ function startsWith(pattern: string, text: string, offset: number): boolean {
     return text.startsWith(pattern, offset) && !isNameChar(text[offset + pattern.length]);
 }
 
-export async function parse(text: string, offset = 0, selfFilename: string): Promise<[iolist, number]> {
+export async function parse(text: string, offset = 0, selfFilename: string): Promise<[Context, number]> {
     offset = parseSpace(text, offset);
-    const ctx = {
-        idlFilename: selfFilename
-        , preRes: []
+    const ctx: Context = {
+        idlFilename: selfFilename,
+        output: new Output(),
     };
-    const defer = (res): Promise<[iolist, number]> => Promise.resolve(res).then(([res, offset]) => {
-        return [[ctx.preRes, res], offset]as [iolist, number];
-    });
+    const defer = (offset: number) => Promise.resolve([ctx, offset] as [Context, number]);
 
     /* macro */
     if (startsWith(define, text, offset)) {
@@ -536,7 +541,8 @@ export async function parse(text: string, offset = 0, selfFilename: string): Pro
     throw new Error('unexpected text');
 }
 
-export async function parseFile(filename: string): Promise<iolist> {
+export async function parseFile(filename: string): Promise<Output> {
+    const output = new Output();
     const text = (await util.promisify(fs.readFile)(filename)).toString();
     const topTrees = [];
     let offset = 0;
